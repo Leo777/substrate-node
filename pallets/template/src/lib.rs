@@ -18,12 +18,13 @@ mod benchmarking;
 pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
-
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
-		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+		type Event: From<Event<Self>>
+			+ IsType<<Self as frame_system::Config>::Event>
+			+ TryInto<Event<Self>>;
 	}
 
 	#[pallet::pallet]
@@ -96,6 +97,23 @@ pub mod pallet {
 					<Something<T>>::put(new);
 					Ok(())
 				},
+			}
+		}
+	}
+
+	#[pallet::hooks]
+	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+		fn offchain_worker(block_number: T::BlockNumber) {
+			log::info!("OCW {:?}", block_number);
+			if <frame_system::Pallet<T>>::read_events_no_consensus()
+				.into_iter()
+				.filter_map(|event_record| {
+					let local_event = <T as Config>::Event::from(event_record.event);
+					local_event.try_into().ok()
+				})
+				.any(|event| matches!(event, Event::SomethingStored(..)))
+			{
+				log::info!("Hello world from block {:?}", block_number);
 			}
 		}
 	}
