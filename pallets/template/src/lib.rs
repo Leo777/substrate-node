@@ -113,7 +113,7 @@ pub mod pallet {
 				})
 				.any(|event| matches!(event, Event::SomethingStored(..)))
 			{
-				log::info!("Hello world from block {:?}", block_number);
+				log::info!("Hello world from OCW {:?}", block_number);
 			}
 		}
 	}
