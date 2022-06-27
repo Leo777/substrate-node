@@ -1,0 +1,17 @@
+1) Check if all nodes runining OCW how to syncronize
+
+2) Store user balance and run node
+
+3) After balance is not enough destroy node
+
+4) Store variables 
+
+5) Difference between offchain worker and program
+
+6) Treshold sighn
+
+
+
+https://github.com/JoshOrndorff/recipes/blob/master/pallets/ocw-demo/src/lib.rs
+https://substrate.recipes/off-chain-workers/transactions.html
+
