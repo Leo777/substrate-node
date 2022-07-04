@@ -295,9 +295,14 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
+parameter_types! {
+	pub const GracePeriod: BlockNumber = 1 * MINUTES;
+}
+
 /// Configure the pallet-template in pallets/template.
 impl pallet_template::Config for Runtime {
 	type Event = Event;
+	type GracePeriod = GracePeriod;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

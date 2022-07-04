@@ -10,8 +10,42 @@
 
 6) Treshold sighn
 
-
+start 2 nodes and check how ocw is executed
 
 https://github.com/JoshOrndorff/recipes/blob/master/pallets/ocw-demo/src/lib.rs
 https://substrate.recipes/off-chain-workers/transactions.html
+
+
+./target/release/node-template \
+--base-path /tmp/node02 \
+--chain ./customSpecRaw.json \
+--port 30334 \
+--ws-port 9945 \
+--rpc-port 9934 \
+--telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
+--validator \
+--rpc-cors all \
+--ws-external \
+--rpc-external \
+--rpc-methods Unsafe \
+--name MyNode02 \
+--bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWAk2PkrAqmEaqGtGc8ieUARYWmTyJkimpndd1F1f3ZJWZ \ 
+
+
+
+To start node
+./target/release/node-template \
+--base-path /tmp/alice \
+--chain dev \
+--alice \
+--port 30333 \
+--ws-port 9945 \
+--rpc-port 9933 \
+--node-key 0000000000000000000000000000000000000000000000000000000000000001 \
+--telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
+--validator \
+--rpc-cors all \
+--ws-external \
+--rpc-external \
+--rpc-methods Unsafe \
 

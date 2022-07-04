@@ -1,9 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use frame_support::sp_runtime::{
-	offchain::{
-		storage::{MutateStorageError, StorageRetrievalError, StorageValueRef}
-	}
+use frame_support::sp_runtime::offchain::storage::{
+	MutateStorageError, StorageRetrievalError, StorageValueRef,
 };
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
@@ -118,29 +116,34 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		fn choose_transaction_type(block_number: T::BlockNumber) -> TransactionType {
 			const RECENTLY_SENT: () = ();
-
+			log::info!("Choose transaction ");
 			let val = StorageValueRef::persistent(b"example_ocw::last_send");
 
 			let res =
 				val.mutate(|last_send: Result<Option<T::BlockNumber>, StorageRetrievalError>| {
 					match last_send {
-						Ok(Some(block)) if block_number < block + T::GracePeriod::get() =>
-							Err(RECENTLY_SENT),
+						Ok(Some(block)) if block_number < block + T::GracePeriod::get() => {
+							log::info!("Recently Send ");
+							Err(RECENTLY_SENT)
+						},
 						_ => Ok(block_number),
 					}
 				});
 
 			match res {
-				Ok(block_number) => TransactionType::Signed,
-				Err(MutateStorageError::ValueFunctionFailed(RECENTLY_SENT)) =>
-					TransactionType::None,
-				
+				Ok(_block_number) => TransactionType::Signed,
+				Err(MutateStorageError::ValueFunctionFailed(RECENTLY_SENT)) => {
+					TransactionType::None
+				},
+
 				Err(MutateStorageError::ConcurrentModification(_)) => TransactionType::None,
 			}
 		}
-		fn call_api_and_send_transaction() -> Result<(), &'static str> {
 
+		fn call_api_and_send_transaction() -> Result<(), &'static str> {
 			//TODO
+
+			log::info!("Calling api and sending transaction ");
 			Ok(())
 		}
 	}
@@ -160,7 +163,7 @@ pub mod pallet {
 				let should_send = Self::choose_transaction_type(block_number);
 				let res = match should_send {
 					TransactionType::Signed => Self::call_api_and_send_transaction(),
-					TransactionType::None => todo!()
+					TransactionType::None => Ok(()),
 				};
 				if let Err(e) = res {
 					log::error!("Error: {}", e);
