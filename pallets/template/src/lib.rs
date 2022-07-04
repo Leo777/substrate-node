@@ -22,6 +22,7 @@ pub mod pallet {
 	use super::*;
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
+	
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
@@ -142,8 +143,13 @@ pub mod pallet {
 
 		fn call_api_and_send_transaction() -> Result<(), &'static str> {
 			//TODO
+			let validator = sp_io::offchain::is_validator();
 
-			log::info!("Calling api and sending transaction ");
+			if validator {
+				log::info!("Calling api and sending transaction ");
+				log::info!("is validator {:?} ", validator);
+			}
+			
 			Ok(())
 		}
 	}
