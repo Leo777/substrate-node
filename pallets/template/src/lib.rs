@@ -9,20 +9,20 @@ use parity_scale_codec::{Decode, Encode};
 
 use frame_support::sp_runtime::{
 	offchain as rt_offchain,
-	offchain::storage_lock::{BlockAndTime, StorageLock},
-	transaction_validity::{
-		InvalidTransaction, TransactionSource, TransactionValidity, ValidTransaction,
+	traits::{
+		BlockNumberProvider
 	},
-	RuntimeDebug,
+	offchain::storage_lock::{BlockAndTime, StorageLock},
+	
 };
 
-use frame_support::sp_std::{collections::vec_deque::VecDeque, prelude::*, str};
+use frame_support::sp_std::{prelude::*, str};
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
 
-const HTTP_REMOTE_REQUEST: &str = "https://api.github.com/orgs/substrate-developer-hub";
+const HTTP_REMOTE_REQUEST: &str = "http://www.randomnumberapi.com/api/v1.0/random?min=100&max=1000&count=5";
 const HTTP_HEADER_USER_AGENT: &str = "jimmychu0807";
 
 const FETCH_TIMEOUT_PERIOD: u64 = 3000; // in milli-seconds
@@ -171,6 +171,13 @@ pub mod pallet {
 			}
 		}
 	}
+	impl<T: Config> BlockNumberProvider for Pallet<T> {
+		type BlockNumber = T::BlockNumber;
+
+		fn current_block_number() -> Self::BlockNumber {
+			<frame_system::Pallet<T>>::block_number()
+		}
+	}
 
 	impl<T: Config> Pallet<T> {
 		fn choose_transaction_type(block_number: T::BlockNumber) -> TransactionType {
@@ -201,32 +208,30 @@ pub mod pallet {
 
 		fn call_api_and_send_transaction() -> Result<(), &'static str> {
 			//TODO
-			let result = Self::fetch_n_parse()?;
+			let mut lock = StorageLock::<BlockAndTime<Self>>::with_block_and_time_deadline(
+				b"ocw-demo::lock",
+				LOCK_BLOCK_EXPIRATION,
+				rt_offchain::Duration::from_millis(LOCK_TIMEOUT_EXPIRATION),
+			);
+			
+			// We try to acquire the lock here. If failed, we know the `fetch_n_parse` part inside is being
+			//   executed by previous run of ocw, so the function just returns.
+			// ref: https://substrate.dev/rustdocs/v3.0.0/sp_runtime/offchain/storage_lock/struct.StorageLock.html#method.try_lock
+			if let Ok(_guard) = lock.try_lock() {
+				match Self::fetch_from_remote() {
+					Ok(gh_info) => {
+						log::info!("is Result {:?} ", gh_info);
+					}
+					Err(err) => {
+						log::info!("ERRORR Fetching");
+					}
+				}
+			}
 
 			log::info!("Calling api and sending transaction ");
-			log::info!("is Result {:?} ", result);
 
 			Ok(())
 		}
-
-		/// Fetch from remote and deserialize the JSON to a struct
-		fn fetch_n_parse() -> Result<GithubInfo, Error<T>> {
-			let resp_bytes = Self::fetch_from_remote().map_err(|e| {
-				log::error!("fetch_from_remote error: {:?}", e);
-				<Error<T>>::HttpFetchingError
-			})?;
-
-			let resp_str =
-				str::from_utf8(&resp_bytes).map_err(|_| <Error<T>>::HttpFetchingError)?;
-			// Print out our fetched JSON string
-			log::info!("{}", resp_str);
-
-			// Deserializing JSON to struct, thanks to `serde` and `serde_derive`
-			let gh_info: GithubInfo =
-				serde_json::from_str(resp_str).map_err(|_| <Error<T>>::HttpFetchingError)?;
-			Ok(gh_info)
-		}
-
 		fn fetch_from_remote() -> Result<Vec<u8>, Error<T>> {
 			// Initiate an external HTTP GET request. This is using high-level wrappers from `sp_runtime`.
 			let request = rt_offchain::http::Request::get(HTTP_REMOTE_REQUEST);
