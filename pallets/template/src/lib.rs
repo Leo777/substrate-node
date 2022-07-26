@@ -6,14 +6,12 @@ use frame_support::sp_runtime::offchain::storage::{
 use serde::{Deserialize, Deserializer};
 
 use parity_scale_codec::{Decode, Encode};
+use sp_io::offchain_index;
 
 use frame_support::sp_runtime::{
 	offchain as rt_offchain,
-	traits::{
-		BlockNumberProvider
-	},
 	offchain::storage_lock::{BlockAndTime, StorageLock},
-	
+	traits::BlockNumberProvider,
 };
 
 use frame_support::sp_std::{prelude::*, str};
@@ -22,8 +20,14 @@ use frame_support::sp_std::{prelude::*, str};
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
 
-const HTTP_REMOTE_REQUEST: &str = "http://www.randomnumberapi.com/api/v1.0/random?min=100&max=1000&count=5";
-const HTTP_HEADER_USER_AGENT: &str = "jimmychu0807";
+#[derive(Debug, Deserialize, Encode, Decode, Default)]
+struct Fetching(Vec<u8>, bool);
+
+const ONCHAIN_TX_KEY: &[u8] = b"ocw-demo::storage::tx";
+
+// const HTTP_REMOTE_REQUEST: &str =
+// 	"http://www.randomnumberapi.com/api/v1.0/random?min=100&max=1000&count=5";
+const HTTP_REMOTE_REQUEST: &str = "https://hacker-news.firebaseio.com/v0/item/9129911.json";
 
 const FETCH_TIMEOUT_PERIOD: u64 = 3000; // in milli-seconds
 const LOCK_TIMEOUT_EXPIRATION: u64 = FETCH_TIMEOUT_PERIOD + 1000; // in milli-seconds
@@ -37,43 +41,6 @@ mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
-
-// ref: https://serde.rs/container-attrs.html#crate
-#[derive(Deserialize, Encode, Decode, Default)]
-struct GithubInfo {
-	// Specify our own deserializing function to convert JSON string to vector of bytes
-	#[serde(deserialize_with = "de_string_to_bytes")]
-	login: Vec<u8>,
-	#[serde(deserialize_with = "de_string_to_bytes")]
-	blog: Vec<u8>,
-	public_repos: u32,
-}
-
-#[derive(Debug, Deserialize, Encode, Decode, Default)]
-struct IndexingData(Vec<u8>, u64);
-
-pub fn de_string_to_bytes<'de, D>(de: D) -> Result<Vec<u8>, D::Error>
-where
-	D: Deserializer<'de>,
-{
-	let s: &str = Deserialize::deserialize(de)?;
-	Ok(s.as_bytes().to_vec())
-}
-
-impl fmt::Debug for GithubInfo {
-	// `fmt` converts the vector of bytes inside the struct back to string for
-	//   more friendly display.
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(
-			f,
-			"{{ login: {}, blog: {}, public_repos: {} }}",
-			str::from_utf8(&self.login).map_err(|_| fmt::Error)?,
-			str::from_utf8(&self.blog).map_err(|_| fmt::Error)?,
-			&self.public_repos
-		)
-	}
-}
-
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -114,11 +81,6 @@ pub mod pallet {
 		SomethingStored(u32, T::AccountId),
 	}
 
-	enum TransactionType {
-		Signed,
-		None,
-	}
-
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
@@ -145,6 +107,10 @@ pub mod pallet {
 
 			// Update storage.
 			<Something<T>>::put(something);
+
+			let key = Self::derived_key(frame_system::Pallet::<T>::block_number());
+			let data = Fetching(b"fetching".to_vec(), true);
+			offchain_index::set(&key, &data.encode());
 
 			// Emit an event.
 			Self::deposit_event(Event::SomethingStored(something, who));
@@ -180,86 +146,56 @@ pub mod pallet {
 	}
 
 	impl<T: Config> Pallet<T> {
-		fn choose_transaction_type(block_number: T::BlockNumber) -> TransactionType {
-			const RECENTLY_SENT: () = ();
-			log::info!("Choose transaction ");
-			let val = StorageValueRef::persistent(b"example_ocw::last_send");
-
-			let res =
-				val.mutate(|last_send: Result<Option<T::BlockNumber>, StorageRetrievalError>| {
-					match last_send {
-						Ok(Some(block)) if block_number < block + T::GracePeriod::get() => {
-							log::info!("Recently Send ");
-							Err(RECENTLY_SENT)
-						},
-						_ => Ok(block_number),
-					}
-				});
-
-			match res {
-				Ok(_block_number) => TransactionType::Signed,
-				Err(MutateStorageError::ValueFunctionFailed(RECENTLY_SENT)) => {
-					TransactionType::None
-				},
-
-				Err(MutateStorageError::ConcurrentModification(_)) => TransactionType::None,
-			}
+		#[deny(clippy::clone_double_ref)]
+		fn derived_key(block_number: T::BlockNumber) -> Vec<u8> {
+			block_number.using_encoded(|encoded_bn| {
+				ONCHAIN_TX_KEY
+					.iter()
+					.chain(b"/".iter())
+					.chain(encoded_bn)
+					.copied()
+					.collect::<Vec<u8>>()
+			})
 		}
 
-		fn call_api_and_send_transaction() -> Result<(), &'static str> {
-			//TODO
-			let mut lock = StorageLock::<BlockAndTime<Self>>::with_block_and_time_deadline(
-				b"ocw-demo::lock",
-				LOCK_BLOCK_EXPIRATION,
-				rt_offchain::Duration::from_millis(LOCK_TIMEOUT_EXPIRATION),
-			);
-			
-			// We try to acquire the lock here. If failed, we know the `fetch_n_parse` part inside is being
-			//   executed by previous run of ocw, so the function just returns.
-			// ref: https://substrate.dev/rustdocs/v3.0.0/sp_runtime/offchain/storage_lock/struct.StorageLock.html#method.try_lock
-			if let Ok(_guard) = lock.try_lock() {
-				match Self::fetch_from_remote() {
-					Ok(gh_info) => {
-						log::info!("is Result {:?} ", gh_info);
-					}
-					Err(err) => {
-						log::info!("ERRORR Fetching");
-					}
-				}
-			}
-
-			log::info!("Calling api and sending transaction ");
-
-			Ok(())
-		}
+		/// This function uses the `offchain::http` API to query the remote endpoint information,
+		///   and returns the JSON response as vector of bytes.
 		fn fetch_from_remote() -> Result<Vec<u8>, Error<T>> {
-			// Initiate an external HTTP GET request. This is using high-level wrappers from `sp_runtime`.
+			// Initiate an external HTTP GET request. This is using high-level wrappers from
+			// `sp_runtime`.
 			let request = rt_offchain::http::Request::get(HTTP_REMOTE_REQUEST);
 
-			// Keeping the offchain worker execution time reasonable, so limiting the call to be within 3s.
+			// Keeping the offchain worker execution time reasonable, so limiting the call to be
+			// within 3s.
 			let timeout = sp_io::offchain::timestamp()
 				.add(rt_offchain::Duration::from_millis(FETCH_TIMEOUT_PERIOD));
 
-			// For github API request, we also need to specify `user-agent` in http request header.
-			//   See: https://developer.github.com/v3/#user-agent-required
 			let pending = request
-				.add_header("User-Agent", HTTP_HEADER_USER_AGENT)
 				.deadline(timeout) // Setting the timeout time
 				.send() // Sending the request out by the host
-				.map_err(|_| <Error<T>>::HttpFetchingError)?;
+				.map_err(|e| {
+					log::error!("{:?}", e);
+					<Error<T>>::HttpFetchingError
+				})?;
 
-			// By default, the http request is async from the runtime perspective. So we are asking the
-			//   runtime to wait here.
-			// The returning value here is a `Result` of `Result`, so we are unwrapping it twice by two `?`
-			//   ref: https://substrate.dev/rustdocs/v3.0.0/sp_runtime/offchain/http/struct.PendingRequest.html#method.try_wait
+			// By default, the http request is async from the runtime perspective. So we are asking
+			// the   runtime to wait here
+			// The returning value here is a `Result` of `Result`, so we are unwrapping it twice by
+			// two `?`   ref: https://docs.substrate.io/rustdocs/latest/sp_runtime/offchain/http/struct.PendingRequest.html#method.try_wait
 			let response = pending
 				.try_wait(timeout)
-				.map_err(|_| <Error<T>>::HttpFetchingError)?
-				.map_err(|_| <Error<T>>::HttpFetchingError)?;
+				.map_err(|e| {
+					log::error!("{:?}", e);
+					<Error<T>>::HttpFetchingError
+				})?
+				.map_err(|e| {
+					log::error!("{:?}", e);
+					<Error<T>>::HttpFetchingError
+				})?;
 
 			if response.code != 200 {
 				log::error!("Unexpected http request status code: {}", response.code);
-				return Err(<Error<T>>::HttpFetchingError);
+				return Err(<Error<T>>::HttpFetchingError)
 			}
 
 			// Next we fully read the response body and collect it to a vector of bytes.
@@ -271,24 +207,25 @@ pub mod pallet {
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 		fn offchain_worker(block_number: T::BlockNumber) {
 			log::info!("OCW {:?}", block_number);
-			if <frame_system::Pallet<T>>::read_events_no_consensus()
-				.into_iter()
-				.filter_map(|event_record| {
-					let local_event = <T as Config>::Event::from(event_record.event);
-					local_event.try_into().ok()
-				})
-				.any(|event| matches!(event, Event::SomethingStored(..)))
-			{
-				let should_send = Self::choose_transaction_type(block_number);
-				let res = match should_send {
-					TransactionType::Signed => Self::call_api_and_send_transaction(),
-					TransactionType::None => Ok(()),
-				};
-				if let Err(e) = res {
-					log::error!("Error: {}", e);
+			// Reading back the off-chain indexing value. It is exactly the same as reading from
+			// ocw local storage.
+			let key = Self::derived_key(block_number);
+			let oci_mem = StorageValueRef::persistent(&key);
+
+			let mut lock = StorageLock::<BlockAndTime<Self>>::with_block_and_time_deadline(
+				b"ocw-demo::lock",
+				LOCK_BLOCK_EXPIRATION,
+				rt_offchain::Duration::from_millis(LOCK_TIMEOUT_EXPIRATION),
+			);
+			if let Ok(_guard) = lock.try_lock() {
+				if let Ok(Some(data)) = oci_mem.get::<Fetching>() {
+					log::info!("Making HTTTP Call {:?}", data);
+				} else {
+					log::info!("Chilling");
 				}
-				log::info!("Hello world from OCW {:?}", block_number);
-			}
+			} else {
+				log::info!("Lock");
+			};
 		}
 	}
 }
