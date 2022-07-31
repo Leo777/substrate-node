@@ -46,6 +46,8 @@ pub use sp_runtime::{Perbill, Permill};
 /// Import the template pallet.
 pub use pallet_template;
 
+pub use pallet_authorship;
+
 /// An index to a block.
 pub type BlockNumber = u32;
 
@@ -305,6 +307,13 @@ impl pallet_template::Config for Runtime {
 	type GracePeriod = GracePeriod;
 }
 
+// impl pallet_authorship::Config for Rutime {
+// 	type FindAuthor = pallet_session::FindAccountFromAuthorIndex<Self, Babe>;
+// 	type UncleGenerations = UncleGenerations;
+// 	type FilterUncle = ();
+// 	type EventHandler = (Staking, ImOnline);
+// }
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -322,7 +331,8 @@ construct_runtime!(
 		Sudo: pallet_sudo,
 		// Include the custom logic from the pallet-template in the runtime.
 		TemplateModule: pallet_template,
-		Nicks: pallet_nicks
+		Nicks: pallet_nicks,
+		// Authorship: pallet_authorship,
 	}
 );
 

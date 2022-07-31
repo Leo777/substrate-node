@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
 use core::{convert::TryInto, fmt};
 use frame_support::sp_runtime::offchain::storage::{
 	MutateStorageError, StorageRetrievalError, StorageValueRef,
@@ -49,11 +51,13 @@ pub mod pallet {
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config {
+	pub trait Config: frame_system::Config + pallet_authorship::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>>
 			+ IsType<<Self as frame_system::Config>::Event>
 			+ TryInto<Event<Self>>;
+
+		type Authorship: pallet_authorship::Config;
 
 		#[pallet::constant]
 		type GracePeriod: Get<Self::BlockNumber>;
@@ -207,25 +211,27 @@ pub mod pallet {
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 		fn offchain_worker(block_number: T::BlockNumber) {
 			log::info!("OCW {:?}", block_number);
-			// Reading back the off-chain indexing value. It is exactly the same as reading from
-			// ocw local storage.
-			let key = Self::derived_key(block_number);
-			let oci_mem = StorageValueRef::persistent(&key);
 
-			let mut lock = StorageLock::<BlockAndTime<Self>>::with_block_and_time_deadline(
-				b"ocw-demo::lock",
-				LOCK_BLOCK_EXPIRATION,
-				rt_offchain::Duration::from_millis(LOCK_TIMEOUT_EXPIRATION),
-			);
-			if let Ok(_guard) = lock.try_lock() {
-				if let Ok(Some(data)) = oci_mem.get::<Fetching>() {
-					log::info!("Making HTTTP Call {:?}", data);
-				} else {
-					log::info!("Chilling");
-				}
-			} else {
-				log::info!("Lock");
-			};
+			<pallet_authorship::Pallet<T>>::author();
+		// 	// Reading back the off-chain indexing value. It is exactly the same as reading from
+		// 	// ocw local storage.
+		// 	let key = Self::derived_key(block_number);
+		// 	let oci_mem = StorageValueRef::persistent(&key);
+
+		// 	let mut lock = StorageLock::<BlockAndTime<Self>>::with_block_and_time_deadline(
+		// 		b"ocw-demo::lock",
+		// 		LOCK_BLOCK_EXPIRATION,
+		// 		rt_offchain::Duration::from_millis(LOCK_TIMEOUT_EXPIRATION),
+		// 	);
+		// 	if let Ok(_guard) = lock.try_lock() {
+		// 		if let Ok(Some(data)) = oci_mem.get::<Fetching>() {
+		// 			log::info!("Making HTTTP Call {:?}", data);
+		// 		} else {
+		// 			log::info!("Chilling");
+		// 		}
+		// 	} else {
+		// 		log::info!("Lock");
+		// 	};
 		}
 	}
 }
