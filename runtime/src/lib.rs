@@ -306,19 +306,24 @@ impl pallet_template::Config for Runtime {
 	type Event = Event;
 	type GracePeriod = GracePeriod;
 }
+parameter_types! {
+    pub const UncleGenerations: u32 = 3;
+}
 
-// impl pallet_authorship::Config for Rutime {
-// 	type FindAuthor = pallet_session::FindAccountFromAuthorIndex<Self, Babe>;
-// 	type UncleGenerations = UncleGenerations;
-// 	type FilterUncle = ();
-// 	type EventHandler = (Staking, ImOnline);
-// }
+impl pallet_authorship::Config for Rutime {
+	type FindAuthor = pallet_aura::AuraAuthorId<T>;
+	type UncleGenerations = UncleGenerations;
+	type FilterUncle = ();
+	type EventHandler = ();
+	
+}
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
 		NodeBlock = opaque::Block,
+		
 		UncheckedExtrinsic = UncheckedExtrinsic
 	{
 		System: frame_system,
@@ -332,7 +337,8 @@ construct_runtime!(
 		// Include the custom logic from the pallet-template in the runtime.
 		TemplateModule: pallet_template,
 		Nicks: pallet_nicks,
-		// Authorship: pallet_authorship,
+		Authorship: pallet_authorship,
+		
 	}
 );
 
